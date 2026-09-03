@@ -390,7 +390,7 @@ function uid(p){return (p||'id')+'_'+Date.now().toString(36)+Math.random().toStr
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(m,t){const w=document.getElementById('toasts');const d=document.createElement('div');d.className='toast '+(t||'');d.innerHTML=(t==='s'?'✓ ':t==='e'?'✕ ':t==='w'?'⚠ ':'')+esc(m);w.appendChild(d);setTimeout(()=>{d.style.opacity='0';d.style.transition='.3s';setTimeout(()=>d.remove(),300)},2600);}
 let __saveTimer=null;
-function save(){DB._ts=Date.now();localStorage.setItem(SK,JSON.stringify(DB));try{const cf=cloudCfg();if(cf&&cf.auto&&cf.auto.gs){clearTimeout(__saveTimer);__saveTimer=setTimeout(()=>{gsPush(true);},2500);}}catch(e){}}
+function save(){DB._ts=Date.now();localStorage.setItem(SK,JSON.stringify(DB));try{const cf=cloudCfg();if(cf&&cf.auto&&(cf.auto.gs||cf.auto.gh)){clearTimeout(__saveTimer);__saveTimer=setTimeout(()=>{if(cf.auto.gs)gsPush(true);if(cf.auto.gh)ghPublish(true);},3000);}}catch(e){}}
 function cloudCfg(){try{return JSON.parse(localStorage.getItem(SK+'_cloud'))||{};}catch(e){return {};}}
 function cloudSaveCfg(c){localStorage.setItem(SK+'_cloud',JSON.stringify(c));}
 function isWriter(){return SESSION&&SESSION.role!=='student';}
@@ -404,6 +404,16 @@ async function gsPull(){const cf=cloudCfg();const g=cf.gs||{};if(!g.url)return t
   try{const r=await fetch(g.url+(g.url.indexOf('?')<0?'?':'&')+'action=load&t='+Date.now());const j=await r.json();if(!j||!j.schools)return toast('لا توجد بيانات محفوظة','w');
     confirmM('استبدال البيانات الحالية بأحدث نسخة من Google Sheets؟',()=>{DB=j;localStorage.setItem(SK,JSON.stringify(DB));toast('تم الجلب ✓','s');goPage('dashboard');buildSchoolPick();});}catch(e){toast('فشل الجلب: '+e.message,'e');}}
 /* SCALE path — static snapshot on GitHub Pages (unlimited cached reads for students) */
+async function ghPublish(silent){const cf=cloudCfg();const gh=cf.gh||{};if(!gh.token||!gh.owner||!gh.repo)return silent?null:toast('أكمل بيانات GitHub أولاً','e');
+  const path=gh.path||'data.json',branch=gh.branch||'main';const api='https://api.github.com/repos/'+gh.owner+'/'+gh.repo+'/contents/'+encodeURIComponent(path);
+  const H={'Authorization':'Bearer '+gh.token,'Accept':'application/vnd.github+json'};
+  try{let sha;try{const r=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:H});if(r.ok){const j=await r.json();sha=j.sha;}}catch(e){}
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(DB))));
+    const body={message:'update data.json '+new Date().toISOString(),content:content,branch:branch};if(sha)body.sha=sha;
+    const r2=await fetch(api,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},H),body:JSON.stringify(body)});
+    if(!r2.ok){let t='';try{t=await r2.text();}catch(e){}throw new Error('HTTP '+r2.status+' '+t.slice(0,140));}
+    if(!silent)toast('تم النشر إلى GitHub ✓ (يصل للطلاب خلال دقيقة)','s');else toast('🚀 نشر إلى GitHub','s');}catch(e){if(!silent)toast('فشل النشر: '+e.message,'e');}}
+function saveGH(){const V=id=>(document.getElementById(id)||{}).value.trim();const cf=cloudCfg();cf.gh={owner:V('gh-owner'),repo:V('gh-repo'),branch:V('gh-branch')||'main',path:V('gh-path')||'data.json',token:V('gh-token')};cf.auto=cf.auto||{};cf.auto.gh=document.getElementById('gh-auto').checked;cloudSaveCfg(cf);toast('تم حفظ إعداد GitHub','s');renderSettings(reC());}
 function snapshotExport(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(DB)],{type:'application/json'}));a.download='data.json';document.body.appendChild(a);a.click();a.remove();toast('نزّل data.json وارفعه إلى مستودع GitHub','s');}
 async function loadSnapshot(){ // try the static read-snapshot published on GitHub Pages
   try{const r=await fetch('data.json',{cache:'default'});if(!r.ok)return false;const j=await r.json();if(!j||!j.schools)return false;
@@ -1059,7 +1069,7 @@ function printQuality(){const s=S();const cm=compliance(s,qF);let h=`<h2>الا�
 function renderSettings(c){if(SESSION.role!=='manager'){c.innerHTML='<div class="empty"><div class="empty-ic">🔒</div><div class="empty-t">هذه الصفحة لمدير إدارة الجدول (الآدمن) فقط</div></div>';return;}
   const cf=cloudCfg();const g=cf.gs||{};const au=cf.auto||{};
   const gscode="var PROP=PropertiesService.getScriptProperties();\nfunction fileId_(){return PROP.getProperty('FILE_ID');}\nfunction getFile_(json){var id=fileId_();if(id){try{return DriveApp.getFileById(id);}catch(e){}}var f=DriveApp.createFile('ebda_db.json',json||'{}','application/json');PROP.setProperty('FILE_ID',f.getId());return f;}\nfunction doGet(e){var id=fileId_(),c='{}';if(id){try{c=DriveApp.getFileById(id).getBlob().getDataAsString();}catch(e){}}return ContentService.createTextOutput(c).setMimeType(ContentService.MimeType.JSON);}\nfunction doPost(e){var body=(e&&e.postData&&e.postData.contents)?JSON.parse(e.postData.contents):{};var json=JSON.stringify(body.db||{});getFile_(json).setContent(json);try{var ss=SpreadsheetApp.getActiveSpreadsheet();if(ss){var sh=ss.getSheetByName('Backups')||ss.insertSheet('Backups');sh.appendRow([new Date(),body.ts||'',json.length+' chars']);}}catch(e){}return ContentService.createTextOutput('ok');}";
-  const ghyml="name: publish-snapshot\non:\n  schedule: [{cron: '*/10 * * * *'}]\n  workflow_dispatch:\npermissions: {contents: write}\njobs:\n  snap:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: curl -sL \"$SCRIPT_URL?action=load\" -o data.json\n        env: {SCRIPT_URL: ${{ secrets.SCRIPT_URL }}}\n      - run: |\n          git config user.name bot; git config user.email bot@x\n          git add data.json && git commit -m snapshot || echo nochange\n          git push";
+  
   c.innerHTML=`<div class="pghdr"><div><div class="pgtitle">☁️ الربط والنسخ الاحتياطى (GitHub + Google Sheets)</div><div class="pgsub">القراءة السريعة لآلاف الطلاب من لقطة ثابتة على GitHub، والكتابة للإدارة عبر Google Sheets.</div></div><button class="btn bout bsm" onclick="downloadBackup()">⬇️ نسخة JSON</button></div>
   <div class="card" style="border-right:4px solid var(--R)"><div class="ctitle">🧭 كيف يعمل التوسّع لأكثر من ١٠٠٠٠ مستخدم؟</div>
     <div class="info" style="margin-top:8px;line-height:2">
@@ -1074,11 +1084,12 @@ function renderSettings(c){if(SESSION.role!=='manager'){c.innerHTML='<div class=
     <div class="info" style="margin-top:12px">١) افتح جدول Google Sheets ← Extensions ← Apps Script، والصق الكود، ثم Deploy ← Web app (Execute as: Me، Access: Anyone)، وانسخ الرابط هنا:</div>
     <pre style="background:#0F1B3D;color:#cfe8ff;padding:12px;border-radius:9px;font-size:11px;overflow:auto;direction:ltr;text-align:left">${esc(gscode)}</pre>
     <div class="info">جدولك: <a href="https://docs.google.com/spreadsheets/d/1jMDx4Rh3ks7wZtA4t_Uw8XFo3EAO_9tlvLwk-xv-xQI/edit" target="_blank" style="color:var(--Rd)">افتح الجدول</a> — سيُنشأ تبويب <b>Backups</b> تلقائياً.</div></div>
-  <div class="card"><div class="chdr"><div class="ctitle">🚀 لقطة القراءة على GitHub (data.json)</div></div>
-    <div class="info" style="margin-bottom:8px">هذا الملف هو ما يقرؤه الطلاب. حدّثه بإحدى طريقتين:</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn bteal bsm" onclick="snapshotExport()">📤 تصدير data.json (يدوى)</button></div>
-    <div class="info" style="margin-top:12px"><b>التلقائى (مُوصى به):</b> أضف Secret باسم <code>SCRIPT_URL</code> فى المستودع (Settings ← Secrets ← Actions) بقيمة رابط Apps Script، ثم أضف ملف <code>.github/workflows/publish.yml</code> بالمحتوى:</div>
-    <pre style="background:#0F1B3D;color:#cfe8ff;padding:12px;border-radius:9px;font-size:11px;overflow:auto;direction:ltr;text-align:left">${esc(ghyml)}</pre></div>
+  <div class="card"><div class="chdr"><div class="ctitle">🚀 نشر لقطة القراءة للطلاب (data.json)</div><span class="badge ${(cf.gh&&cf.gh.token&&cf.gh.repo)?'bg':'bn'}">${(cf.gh&&cf.gh.token&&cf.gh.repo)?'مُهيّأ':'غير مُهيّأ'}</span></div>
+    <div class="info" style="margin-bottom:8px">الطلاب يقرؤون هذا الملف من GitHub بسرعة عالية عبر CDN. انشره <b>بضغطة زر</b> — بدون GitHub Actions وبدون رفع يدوى.</div>
+    <div class="fgrid"><div class="fm"><label>اسم المستخدم (owner)</label><input id="gh-owner" value="${esc((cf.gh||{}).owner||'')}" placeholder="username"/></div><div class="fm"><label>المستودع (repo)</label><input id="gh-repo" value="${esc((cf.gh||{}).repo||'')}" placeholder="ebda-schedule"/></div><div class="fm"><label>الفرع</label><input id="gh-branch" value="${esc((cf.gh||{}).branch||'main')}"/></div><div class="fm"><label>مسار الملف</label><input id="gh-path" value="${esc((cf.gh||{}).path||'data.json')}"/></div><div class="fm full"><label>GitHub Token (fine-grained — صلاحية Contents: Read and write لهذا المستودع)</label><input id="gh-token" value="${esc((cf.gh||{}).token||'')}" placeholder="github_pat_..."/></div></div>
+    <label class="lremember" style="color:var(--t2)"><input type="checkbox" id="gh-auto" ${au.gh?'checked':''}/> نشر تلقائى إلى GitHub بعد كل حفظ</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn bpri bsm" onclick="saveGH()">💾 حفظ الإعداد</button><button class="btn bteal bsm" onclick="ghPublish()">🚀 نشر الآن إلى GitHub</button><button class="btn bout bsm" onclick="snapshotExport()">📤 تصدير data.json يدوياً</button></div>
+    <div class="info" style="margin-top:10px">إنشاء التوكن: GitHub ← صورتك ← <b>Settings</b> ← <b>Developer settings</b> ← <b>Personal access tokens → Fine-grained tokens</b> ← <b>Generate new token</b> ← <b>Repository access</b>: Only select repositories (اختر مستودعك) ← <b>Permissions → Repository permissions → Contents</b>: <b>Read and write</b> ← Generate. التوكن يُحفظ في متصفحك فقط ولا يُرفَع لأى مكان.</div></div>
   <div class="warnbox">ملاحظة صريحة: جوجل شيت وحده لا يتحمّل آلاف الكتابات المتزامنة؛ لذلك يقرأ الطلاب من لقطة CDN ثابتة، ويكتب طاقم الإدارة فقط عبر Apps Script — وبهذا يعمل الأداء بسرعة مع أعداد كبيرة.</div>`;}
 function saveGS(){const cf=cloudCfg();cf.gs={url:document.getElementById('gs-url').value.trim().replace(/\s+/g,'')};cf.auto=cf.auto||{};cf.auto.gs=document.getElementById('gs-auto').checked;cloudSaveCfg(cf);toast('تم حفظ رابط Google Sheets','s');renderSettings(reC());}
 
