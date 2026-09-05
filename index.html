@@ -367,6 +367,32 @@ a{color:#3E92A8}
   .btn{padding:9px 12px}
 }
 @media (max-width:400px){ .mets{grid-template-columns:1fr} }
+
+/* ============================================================
+   LOGIN LAYOUT FIX — center the card, fit content, tidy logos
+   ============================================================ */
+/* center vertically & horizontally; scroll only if truly needed */
+#login.screen{align-items:center!important;justify-content:center!important;padding:20px 12px;overflow-y:auto}
+/* the top wide logo bar: smaller and centered above the card */
+.loginlogos{justify-content:center;gap:18px;width:auto;max-width:96vw;margin:0 auto 14px}
+.loginlogos .logo{height:44px;width:80px;box-shadow:0 4px 14px rgba(0,0,0,.22)}
+/* login card: compact, centered, capped height with internal scroll as last resort */
+.lcard{margin:0 auto;max-height:92vh;overflow-y:auto}
+.cardlogos{margin-bottom:12px}
+.cardlogos .logo{height:38px;width:66px}
+.lh{margin:10px 0 12px}
+.lfg{margin-bottom:11px}
+/* on shorter/desktop screens keep it centered but allow scroll if the card is tall */
+@media (min-width:641px) and (max-height:820px){
+  .loginlogos{display:none} /* logos already shown inside the card */
+  .lcard{margin:0 auto}
+}
+/* small screens: hide the wide bar, rely on in-card logos, comfortable spacing */
+@media (max-width:640px){
+  .loginlogos{display:none}
+  #login.screen{align-items:flex-start;padding-top:14px}
+  .cardlogos .logo{height:34px;width:58px}
+}
 </style>
 </head>
 <body>
